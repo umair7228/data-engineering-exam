@@ -1,0 +1,63 @@
+-- Create database and schema
+CREATE DATABASE IF NOT EXISTS SPOTIFY_DB;
+USE DATABASE SPOTIFY_DB;
+
+CREATE SCHEMA IF NOT EXISTS US_50_PLAYLIST;
+USE SCHEMA US_50_PLAYLIST;
+
+CREATE TABLE spotify_playlists (
+    name STRING,
+    tracks INTEGER
+);
+
+
+
+-- Creting Storage Integration
+CREATE OR REPLACE STORAGE INTEGRATION s3_init_real_time
+TYPE = EXTERNAL_STAGE
+STORAGE_PROVIDER = S3
+ENABLED = TRUE
+STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::767398088866:role/s3-to-snowflake'
+STORAGE_ALLOWED_LOCATIONS = ('s3://s3-lambda-raw-data/output/');
+
+
+DESC STORAGE INTEGRATION s3_init_real_time;
+
+
+
+CREATE OR REPLACE STAGE customer_ext_stage
+url = 's3://s3-lambda-raw-data/output/'
+STORAGE_INTEGRATION = s3_init_real_time;
+
+SHOW STAGES;
+LIST @customer_ext_stage;
+
+CREATE OR REPLACE STAGE customer_ext_stage
+ URL = 's3://transform-data-um/'
+ CREDENTIALS=(AWS_KEY_ID='' AWS_SECRET_KEY='')
+ FILE_FORMAT = (TYPE = 'CSV');
+
+-- Creating File Format
+CREATE OR REPLACE FILE FORMAT csv
+TYPE = CSV
+FIELD_DELIMITER = ','
+SKIP_HEADER = 1;
+
+-- Creating Snowpipe
+CREATE OR REPLACE PIPE spotify_s3_pipe
+AUTO_INGEST = TRUE
+AS
+COPY INTO spotify_playlists
+FROM @customer_ext_stage;
+
+CREATE OR REPLACE PIPE spotify_s3_pipe AUTO_INGEST=TRUE AS
+ COPY INTO spotify_playlists
+ FROM @customer_ext_stage
+ FILE_FORMAT = (TYPE = 'CSV')
+ ON_ERROR = 'CONTINUE';
+
+
+-- Check pipes details to get the notification channel
+SHOW PIPES;
+
+select * from spotify_playlists;
